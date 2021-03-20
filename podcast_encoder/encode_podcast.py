@@ -1,24 +1,57 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 
 import struct
 import collections
 import os
-from wave_file import WaveFile
+from os.path import basename
+from .wave_file import WaveFile
 from argparse import ArgumentParser, Namespace
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, run, DEVNULL
 from threading import Thread
 from io import BytesIO
 from mutagen import id3
 from typing import Tuple, List, IO, Dict, Any
+from sys import exit
 
+from .__init__ import __version__
 
-def __main() -> None:
+version = f"""\
+encode-podcast {__version__}
+Copyright (c) 2018,2021 Sam Hutchins\
+"""
+
+help = f"""\
+Transcode WAV to MP3, optinally including/adding metadata
+
+Usage = {basename(__file__)} FILE [OPTION...]
+
+Creates an 64kb/s mono MP3 file in the current working directory. If specified,
+CUE markers in the WAV file will be turned into ID3 chapters in the MP3.\
+
+Options:
+    --podcast-name NAME
+                    The name of the podcast, will be used in the "artist" tag
+    --episode-title TITLE
+                    The title for the episode, will be used in the "title" tag
+    --episode-number NUMBER
+                    The episode number, will be used as the track number
+    --include-chapters
+                    Include CUE markers as chapters
+
+-h, --help          Print this message and exit
+    --version       Print version information and exit
+
+Requires `lame`\
+"""
+
+def main() -> None:
     args = __configure_args()
 
     wave_file = WaveFile(args.input)
     if args.include_chapters:
         chapters_data: List[Tuple[int, int, str]] = wave_file.read_chapters()
 
+    print("Encoding...")
     audio_data: BytesIO = encode(wave_file)
     wave_file.close()
 
@@ -123,18 +156,46 @@ def __round_up(num: int, target_mutliple: int) -> int:
 
 
 def __configure_args() -> Any:
-    parser = ArgumentParser(description="Encode wav files to MP3")
-    parser.add_argument("input", help="A `wav` file to transcode")
-    parser.add_argument("-o", "--output", help="Path to output file")
-    parser.add_argument("--podcast-name", type=str, help="The name of the podcast")
-    parser.add_argument("--episode-title", type=str, help="The title of the episode")
-    parser.add_argument("--episode-number", type=str, help="Episode number")
-    parser.add_argument("--include-chapters", action="store_true", help="Convert cue markers to MP3 chapters")
+    parser = ArgumentParser(add_help=False)
+    parser.add_argument("input", nargs="?")
+    parser.add_argument("--podcast-name", metavar="NAME")
+    parser.add_argument("--episode-title", metavar="TITLE")
+    parser.add_argument("--episode-number", metavar="NUMBER")
+    parser.add_argument("--include-chapters", action="store_true")
 
-    args: Any = parser.parse_args()
+    parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("--version", action="store_true")
 
-    if not args.output:
-        args.output = __default_output(args.input)
+    args = parser.parse_args()
+
+    if args.version:
+        print(version)
+        exit()
+
+    if args.help:
+        print(help)
+        exit()
+
+    if not args.input:
+        exit(f"Missing argument: input. Try `{basename(__file__)} --help` for more information")
+
+    print("Verifying tools...")
+    command=["lame", "--version"]
+    try:
+        run(command, stdout=DEVNULL, stderr=DEVNULL).check_returncode()
+    except:
+        exit(f"`{command[0]} not found")
+
+
+    if not os.path.exists(args.input):
+            exit(f"Input doesn't exist: {args.input}")
+
+    if os.path.isdir(args.input):
+            exit(f"Input cannot be a directory: {args.input}")
+
+    args.output = __default_output(args.input)
+    if os.path.exists(args.output):
+        exit(f"Output file exists: {args.output}")
 
     return args
 
@@ -144,4 +205,4 @@ def __default_output(input_file: str) -> str:
 
 
 if __name__ == "__main__":
-    __main()
+    main()

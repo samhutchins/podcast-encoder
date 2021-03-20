@@ -1,4 +1,10 @@
-.mypy_cache
-__pycache__
-build
-dist
+/*
+
+!.gitignore
+!.README.md
+!LICENSE
+!*.py
+
+!podcast_encoder/
+podcast_encoder/*
+!podcast_encoder/*.py
